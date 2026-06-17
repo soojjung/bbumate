@@ -188,14 +188,25 @@ def ingest(
                 return
         
         # 통합 벡터 DB 생성 및 저장
-        # Chroma 0.4.x부터는 자동으로 persist되므로 persist() 호출 불필요
+        # OpenAI 임베딩 API의 1회 요청 토큰 한도(300k)를 넘지 않도록 배치 처리.
+        # 1,000+ 청크를 한 번에 from_documents에 넣으면 BadRequestError(400) 발생.
+        BATCH_SIZE = 100
+        total = len(all_chunks)
+
         vectorstore = Chroma.from_documents(
-            documents=all_chunks,
+            documents=all_chunks[:BATCH_SIZE],
             embedding=embeddings,
             persist_directory=db_path,
             collection_name=collection_name,
         )
-        
+        done = min(BATCH_SIZE, total)
+        print(f"[Unified DB] Embedded {done}/{total} chunks")
+        for i in range(BATCH_SIZE, total, BATCH_SIZE):
+            batch = all_chunks[i : i + BATCH_SIZE]
+            vectorstore.add_documents(batch)
+            done += len(batch)
+            print(f"[Unified DB] Embedded {done}/{total} chunks")
+
         elapsed_s = time.perf_counter() - start_time
         print(f"\n{'='*60}")
         print(f"[DONE] Unified ingestion completed")
