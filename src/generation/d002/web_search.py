@@ -98,6 +98,7 @@ def execute_web_search_path(
     final_region: Optional[str],
     final_housing_type: Optional[str],
     verbose: bool = False,
+    lang: str = "ko",
 ) -> tuple[str, List[Dict[str, str]]]:
     """웹 검색 경로 실행 (Re-write query → Web Search → Generate).
 
@@ -123,14 +124,15 @@ def execute_web_search_path(
 
     # Generate with Web Search results
     answer = generate_with_web_context(
-        query, web_results, llm, final_region, final_housing_type
+        query, web_results, llm, final_region, final_housing_type, lang=lang
     )
 
     # 웹 검색 메타데이터를 sources 형태로 변환
+    fallback_label = "Web search" if (lang or "ko").lower() == "en" else "웹 검색"
     sources = (
         [{"title": item["title"], "url": item["url"]} for item in web_metadata]
         if web_metadata
-        else ["웹 검색"]
+        else [fallback_label]
     )
 
     return answer, sources

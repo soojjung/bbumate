@@ -7,16 +7,38 @@ from langchain_core.output_parsers import StrOutputParser
 from src.utils.d002.context_extraction import build_user_context
 
 
+# 모델이 한국어 문서를 보더라도 사용자에게는 영어로 답하도록 시키는 지시문.
+_ENGLISH_DIRECTIVE = (
+    "\n\nIMPORTANT LANGUAGE INSTRUCTION:\n"
+    "- The retrieved source documents are written in Korean.\n"
+    "- Read and understand them, but ALWAYS respond entirely in English.\n"
+    "- Keep proper nouns (program names, agency names) in their original form, "
+    "and add a brief English gloss in parentheses on first mention if helpful.\n"
+    "- Preserve numeric values exactly; convert currency labels to English "
+    "(예: '100만원' → '1,000,000 KRW' or 'KRW 1,000,000').\n"
+    "- Bold Korean phrases like '제공된 문서에는' must NOT appear; if you must "
+    "indicate missing info, write: 'The provided documents do not contain this information.'"
+)
+
+
+def _system_prompt_with_lang(system_prompt: str, lang: str) -> str:
+    """lang=en이면 영어 출력 지시를 시스템 프롬프트 끝에 덧붙임."""
+    if (lang or "ko").lower() == "en":
+        return system_prompt + _ENGLISH_DIRECTIVE
+    return system_prompt
+
+
 def generate_with_web_context(
     question: str,
     web_results: str,
     llm_model,
     region: Optional[str] = None,
     housing_type: Optional[str] = None,
+    lang: str = "ko",
 ) -> str:
     """웹 검색 결과를 컨텍스트로 사용하여 답변 생성."""
     # 지역/주거형태 컨텍스트 정보 생성
-    user_context = build_user_context(region, housing_type)
+    user_context = build_user_context(region, housing_type, lang=lang)
 
     # 프롬프트 템플릿 구성 (컨텍스트 유무에 따라 다르게)
     if user_context:
@@ -40,6 +62,8 @@ def generate_with_web_context(
             "- 문장 단위로 줄바꿈 (마침표, 느낌표, 물음표 뒤)"
         )
 
+    system_prompt = _system_prompt_with_lang(system_prompt, lang)
+
     web_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -59,6 +83,8 @@ def generate_with_web_context(
         answer = web_chain.invoke(invoke_params)
         return answer.strip()
     except Exception:
+        if (lang or "ko").lower() == "en":
+            return "Sorry, I couldn't generate an answer from the web search results."
         return "죄송합니다. 웹 검색 결과를 기반으로 답변을 생성할 수 없습니다."
 
 
@@ -68,10 +94,11 @@ def generate_with_docs_context(
     llm_model,
     region: Optional[str] = None,
     housing_type: Optional[str] = None,
+    lang: str = "ko",
 ) -> str:
     """문서 컨텍스트를 사용하여 답변 생성."""
     # 지역/주거형태 컨텍스트 정보 생성
-    user_context = build_user_context(region, housing_type)
+    user_context = build_user_context(region, housing_type, lang=lang)
 
     # 기본 프롬프트 구성
     base_prompt = """당신은 신혼부부 지원정책 및 가족/복지 정책 도메인 전문가입니다.
@@ -109,6 +136,8 @@ def generate_with_docs_context(
         f"{base_prompt}{user_context_section}\n\n컨텍스트:\n{{context}}".strip()
     )
 
+    system_prompt = _system_prompt_with_lang(system_prompt, lang)
+
     # RAG 체인 구성: Context + Question → Generate
     rag_prompt = ChatPromptTemplate.from_messages(
         [
@@ -122,4 +151,3 @@ def generate_with_docs_context(
     answer = rag_chain.invoke({"question": question, "context": context})
 
     return answer.strip()
-

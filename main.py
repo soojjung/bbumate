@@ -56,6 +56,7 @@ class QueryRequest(BaseModel):
     housing_type: Optional[str] = Field(
         None, description="사전 선택 주거형태 (예: 전세, 월세, 자가, 매매)"
     )
+    lang: Optional[str] = Field("ko", description="응답 언어 (ko 또는 en)")
 
     @field_validator("question")
     @classmethod
@@ -129,6 +130,7 @@ def query(request: QueryRequest):
         use_validation=True,  # validation 활성화
         region=request.region,
         housing_type=request.housing_type,
+        lang=(request.lang or "ko").lower(),
         verbose=True,  # 디버깅을 위해 verbose 활성화
     )
 

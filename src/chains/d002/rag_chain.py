@@ -54,6 +54,7 @@ def run_rag(
     use_validation: bool = True,
     region: Optional[str] = None,
     housing_type: Optional[str] = None,
+    lang: str = "ko",
 ) -> Dict[str, Any]:
     """RAG 파이프라인 실행 (Question Validation → Retrieve → Grade → Generate).
 
@@ -67,6 +68,8 @@ def run_rag(
     """
     start = time.perf_counter()
     retriever, llm, grade_enabled = build_rag_chain(domain, use_grade=use_grade)
+
+    lang = (lang or "ko").lower()
 
     # 지역/주거형태 우선순위 적용
     final_region, final_housing_type = apply_region_housing_priority(
@@ -82,21 +85,30 @@ def run_rag(
     # Question Validation: 도메인 관련성 + 명확성 동시 체크 (선택적 스킵)
     if use_validation:
         # 명확한 질문이면 validation 스킵하여 성능 향상
-        if is_question_clear(query):
+        if is_question_clear(query, lang=lang):
             if verbose:
                 print("[Validation 스킵: 명확한 질문]")
             # validation 통과로 간주
         else:
             # 모호한 질문이면 LLM으로 validation 실행
-            is_valid, reason, clarification_question = validate_question(query, llm)
+            is_valid, reason, clarification_question = validate_question(
+                query, llm, lang=lang
+            )
 
             if not is_valid:
                 if reason == "domain":
                     if verbose:
                         print("[도메인 관련성 없음]")
 
+                    domain_msg = (
+                        "Sorry, I can only answer questions about newlywed support policies "
+                        "(housing, loans, jeonse/purchase funds, etc.) and family/welfare policies "
+                        "(single mothers, single parents, etc.). I can't help with other topics."
+                        if lang == "en"
+                        else "죄송합니다. 신혼부부 지원정책(주거, 대출, 전세자금, 구매자금 등) 및 가족/복지 정책(미혼모, 한부모 지원 등) 관련 질문만 답변드릴 수 있습니다. 다른 주제의 질문은 처리할 수 없습니다."
+                    )
                     return {
-                        "answer": "죄송합니다. 신혼부부 지원정책(주거, 대출, 전세자금, 구매자금 등) 및 가족/복지 정책(미혼모, 한부모 지원 등) 관련 질문만 답변드릴 수 있습니다. 다른 주제의 질문은 처리할 수 없습니다.",
+                        "answer": domain_msg,
                         "sources": [],
                         "duration_ms": int((time.perf_counter() - start) * 1000),
                         "num_docs": 0,
@@ -109,8 +121,13 @@ def run_rag(
                         print("[질문 모호성 감지]")
                         print(f"[명확화 요청]: {clarification_question}")
 
+                    ambiguity_prefix = (
+                        "Could you clarify your question?"
+                        if lang == "en"
+                        else "질문을 더 명확히 해주세요."
+                    )
                     return {
-                        "answer": f"질문을 더 명확히 해주세요.\n\n{clarification_question}",
+                        "answer": f"{ambiguity_prefix}\n\n{clarification_question}",
                         "sources": [],
                         "duration_ms": int((time.perf_counter() - start) * 1000),
                         "num_docs": 0,
@@ -145,17 +162,22 @@ def run_rag(
 
         # Generate with documents
         answer = generate_with_docs_context(
-            query, context, llm, final_region, final_housing_type
+            query, context, llm, final_region, final_housing_type, lang=lang
         )
 
         # 답변에서 "정보가 없습니다" 패턴 감지 → Web Search 경로로 전환
-        # 더 정확한 패턴만 감지 (너무 광범위한 "없습니다"는 제외)
+        # Korean LLM 답변 또는 English LLM 답변 두 경우 모두 잡기 위해 영문 패턴도 포함
         no_info_patterns = [
             "제공된 문서에는 해당 정보가 없습니다",
             "제공된 문서에는",
             "해당 정보가 없습니다",
             "정보가 없습니다",
             "찾을 수 없습니다",
+            "the provided documents do not contain",
+            "no information is available",
+            "no information about",
+            "i cannot find",
+            "could not find",
         ]
         # 패턴이 답변의 시작 부분에 나타나는 경우만 감지 (일부 내용만 언급하는 경우 제외)
         answer_lower = answer.lower()
@@ -167,7 +189,7 @@ def run_rag(
                 print("[Generate 결과: 정보 없음 → Web Search 경로로 전환]")
 
             answer, sources = execute_web_search_path(
-                query, llm, final_region, final_housing_type, verbose
+                query, llm, final_region, final_housing_type, verbose, lang=lang
             )
         else:
             # 답변 성공
@@ -182,7 +204,7 @@ def run_rag(
             print("[Grade 결과: 관련 문서 없음]")
 
         answer, sources = execute_web_search_path(
-            query, llm, final_region, final_housing_type, verbose
+            query, llm, final_region, final_housing_type, verbose, lang=lang
         )
 
     # sources는 위에서 이미 설정됨 (웹 검색 경로 또는 문서 경로)

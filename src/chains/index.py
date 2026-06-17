@@ -63,6 +63,7 @@ def answer_question(
     use_validation: bool = True,
     region: Optional[str] = None,
     housing_type: Optional[str] = None,
+    lang: str = "ko",
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """질문에 답변하고 문서 출처를 반환 (통합 DB 사용, d002의 run_rag 사용).
@@ -108,6 +109,7 @@ def answer_question(
             use_validation=use_validation,
             region=region,
             housing_type=housing_type,
+            lang=lang,
         )
         return result
     finally:

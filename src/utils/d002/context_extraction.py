@@ -100,17 +100,24 @@ def apply_region_housing_priority(
 
 
 def build_user_context(
-    region: Optional[str], housing_type: Optional[str]
+    region: Optional[str],
+    housing_type: Optional[str],
+    lang: str = "ko",
 ) -> Optional[str]:
     """지역/주거형태 컨텍스트 문자열 생성.
 
     Returns:
         컨텍스트 문자열 또는 None (정보가 없을 경우)
     """
+    lang = (lang or "ko").lower()
+    is_en = lang == "en"
+    region_label = "Region" if is_en else "거주 지역"
+    housing_label = "Housing type" if is_en else "주거형태"
+
     context_info = []
     if region:
-        context_info.append(f"거주 지역: {region}")
+        context_info.append(f"{region_label}: {region}")
     if housing_type:
-        context_info.append(f"주거형태: {housing_type}")
+        context_info.append(f"{housing_label}: {housing_type}")
     return "\n".join(context_info) if context_info else None
 
