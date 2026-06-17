@@ -26,8 +26,9 @@ tqdm>=4.66,<5
 # Web Search
 tavily-python>=0.3.0
 
-# PDF processing (for PDFMinerPDFasHTMLLoader)
+# PDF processing
 pdfminer.six>=20221105
+pypdf>=4.0,<6
 
 # Encoding (for tiktoken in pdf_processor.py)
 tiktoken>=0.5.0
